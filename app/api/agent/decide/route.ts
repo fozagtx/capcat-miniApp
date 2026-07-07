@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
 
     if (body.chat) {
       const prompt = CHAT_PROMPT
-        .replace("%SIGNALS%", formatSignals(body.signals))
+        .replace("%SIGNALS%", formatSignals(body.signals ?? []))
         .replace("%STATS%", formatStats(body.agent));
 
       const reply = await chat({ systemPrompt: prompt, userMessage: body.chat, maxTokens: 256, temperature: 0.7 });
