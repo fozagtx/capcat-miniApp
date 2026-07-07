@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Zap, TrendingUp, Shield, ArrowRight, CheckCircle, XCircle, Bot, Play, Square, Activity, Brain, Wallet } from "lucide-react";
-import { payAndFetch, checkBalance, depositToGateway, connectWallet, getAddress } from "@/lib/x402-client";
+import { payAndFetch, checkBalance, depositToGateway, connectWallet } from "@/lib/x402-client";
 import { useCopyAgent } from "@/hooks/use-copy-agent";
 
 interface Signal {
@@ -18,7 +18,7 @@ export default function MiniApp() {
   const [signals, setSignals] = useState<Signal[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSignal, setSelectedSignal] = useState<Signal | null>(null);
-  const [paymentStatus, setPaymentStatus] = useState<"idle" | "required" | "processing" | "success" | "failed">("idle");
+  const [paymentStatus, setPaymentStatus] = useState<"idle" | "processing" | "success" | "failed">("idle");
   const [unlockedData, setUnlockedData] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<"signals" | "agent">("signals");
   const [gatewayBalance, setGatewayBalance] = useState("0");
@@ -178,11 +178,9 @@ export default function MiniApp() {
               <p className="text-lg font-bold text-green-400">{agent.stats.wins}</p>
               <p className="text-xs text-zinc-500">Wins</p>
             </div>
-            <div className={`border rounded-xl p-3 text-center ${agent.stats.netPnl >= 0 ? 'bg-green-500/5 border-green-500/10' : 'bg-red-500/5 border-red-500/10'}`}>
-              <p className={`text-lg font-bold ${agent.stats.netPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                {agent.stats.netPnl >= 0 ? '+' : ''}{agent.stats.netPnl}%
-              </p>
-              <p className="text-xs text-zinc-500">Net P&L</p>
+            <div className="bg-green-500/5 border border-green-500/10 rounded-xl p-3 text-center">
+              <p className="text-lg font-bold text-green-400">{agent.stats.bought}</p>
+              <p className="text-xs text-zinc-500">Bought</p>
             </div>
           </div>
         )}
@@ -392,14 +390,6 @@ export default function MiniApp() {
                     {activity.decision && (
                       <p className="text-xs text-zinc-400 mb-1">{activity.decision.reason}</p>
                     )}
-                    {activity.position && (
-                      <div className="flex gap-3 mt-2 text-xs">
-                        <span className="text-zinc-500">Entry: <span className="text-white font-mono">${activity.position.entry}</span></span>
-                        <span className="text-zinc-500">P&L: <span className={`font-mono ${activity.position.outcome === "win" ? "text-green-400" : "text-red-400"}`}>
-                          {activity.position.outcome === "win" ? "+" : ""}{activity.position.simulatedPnlPct}%
-                        </span></span>
-                      </div>
-                    )}
                   </div>
                   <div className={`px-2 py-1 rounded text-xs font-medium ${
                     activity.type === "bought" ? "bg-green-500/10 text-green-400" :
@@ -430,10 +420,9 @@ export default function MiniApp() {
                     <p className="text-xs text-zinc-500">{rep.copiesTaken} copies • {rep.wins}W / {rep.losses}L</p>
                   </div>
                   <div className="text-right">
-                    <p className={`text-sm font-mono ${rep.netSimulatedPnlPct >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {rep.netSimulatedPnlPct >= 0 ? '+' : ''}{Math.round(rep.netSimulatedPnlPct * 100) / 100}%
+                    <p className="text-sm font-mono text-zinc-400">
+                      {rep.wins}W / {rep.losses}L
                     </p>
-                    <p className="text-xs text-zinc-500">net P&L</p>
                   </div>
                 </div>
               ))}

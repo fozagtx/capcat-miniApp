@@ -1,22 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import {
-  type SignalFeedItem,
-  type PaidSignal,
-  type CopyPosition,
-  ReputationLedger,
-  simulateCopyTrade,
-} from "@/lib/copy-agent-core";
+import { type SignalFeedItem, type PaidSignal, ReputationLedger } from "@/lib/copy-agent-core";
 import { payAndFetch } from "@/lib/x402-client";
 
 export interface AgentActivity {
   id: string;
   timestamp: string;
-  type: "evaluated" | "bought" | "skipped" | "simulated";
+  type: "evaluated" | "bought" | "skipped";
   signal: SignalFeedItem;
   decision?: { pay: boolean; reason: string };
-  position?: CopyPosition;
 }
 
 export interface AgentState {
@@ -27,7 +20,6 @@ export interface AgentState {
     copiesTaken: number;
     wins: number;
     losses: number;
-    netSimulatedPnlPct: number;
   }[];
   stats: {
     totalSignals: number;
@@ -35,7 +27,6 @@ export interface AgentState {
     skipped: number;
     wins: number;
     losses: number;
-    netPnl: number;
   };
 }
 
@@ -43,31 +34,14 @@ function uid() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-async function askLlm(
-  signal: SignalFeedItem,
-  ledger: ReputationLedger,
-): Promise<{ pay: boolean; reason: string }> {
+async function askLlm(signal: SignalFeedItem, ledger: ReputationLedger): Promise<{ pay: boolean; reason: string }> {
   const rep = ledger.get(signal.trader);
-
   const res = await fetch("/api/agent/decide", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      signal,
-      reputation: {
-        copiesTaken: rep.copiesTaken,
-        wins: rep.wins,
-        losses: rep.losses,
-        netSimulatedPnlPct: rep.netSimulatedPnlPct,
-      },
-    }),
+    body: JSON.stringify({ signal, reputation: rep }),
   });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`LLM endpoint error: ${text}`);
-  }
-
+  if (!res.ok) throw new Error(`LLM error: ${await res.text()}`);
   return res.json();
 }
 
@@ -76,35 +50,25 @@ export function useCopyAgent() {
     running: false,
     activities: [],
     ledger: [],
-    stats: { totalSignals: 0, bought: 0, skipped: 0, wins: 0, losses: 0, netPnl: 0 },
+    stats: { totalSignals: 0, bought: 0, skipped: 0, wins: 0, losses: 0 },
   });
 
   const ledgerRef = useRef(new ReputationLedger());
   const runningRef = useRef(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const addActivity = (activity: AgentActivity) => {
-    setState((prev) => ({
-      ...prev,
-      activities: [activity, ...prev.activities].slice(0, 100),
-    }));
+  const addActivity = (a: AgentActivity) => {
+    setState((prev) => ({ ...prev, activities: [a, ...prev.activities].slice(0, 100) }));
   };
 
   const updateStats = (ledger: ReputationLedger) => {
     const all = ledger.all();
     const wins = all.reduce((s, r) => s + r.wins, 0);
     const losses = all.reduce((s, r) => s + r.losses, 0);
-    const netPnl = all.reduce((s, r) => s + r.netSimulatedPnlPct, 0);
-
     setState((prev) => ({
       ...prev,
       ledger: all,
-      stats: {
-        ...prev.stats,
-        wins,
-        losses,
-        netPnl: Math.round(netPnl * 100) / 100,
-      },
+      stats: { ...prev.stats, wins, losses },
     }));
   };
 
@@ -120,56 +84,28 @@ export function useCopyAgent() {
       }));
 
       for (const signal of signals) {
-        // Ask the OpenRouter-powered LLM to decide
         const decision = await askLlm(signal, ledgerRef.current);
 
         if (decision.pay) {
-          addActivity({
-            id: uid(),
-            timestamp: new Date().toISOString(),
-            type: "evaluated",
-            signal,
-            decision,
-          });
+          addActivity({ id: uid(), timestamp: new Date().toISOString(), type: "evaluated", signal, decision });
 
           try {
             const url = `${window.location.origin}/api/signals/${signal.id}`;
-            const paidSignal = await payAndFetch<PaidSignal>(url);
+            await payAndFetch<PaidSignal>(url);
 
-            const cost = parseFloat(signal.priceUsdc.replace("$", ""));
-            const position = simulateCopyTrade(paidSignal, cost);
-            ledgerRef.current.record(position);
-
-            addActivity({
-              id: uid(),
-              timestamp: new Date().toISOString(),
-              type: "bought",
-              signal,
-              decision,
-              position,
-            });
-
+            ledgerRef.current.record(signal.trader, true);
             updateStats(ledgerRef.current);
+
+            addActivity({ id: uid(), timestamp: new Date().toISOString(), type: "bought", signal, decision });
           } catch {
-            addActivity({
-              id: uid(),
-              timestamp: new Date().toISOString(),
-              type: "skipped",
-              signal,
-              decision: { pay: false, reason: "Payment failed (x402)" },
-            });
+            ledgerRef.current.record(signal.trader, false);
+            updateStats(ledgerRef.current);
+            addActivity({ id: uid(), timestamp: new Date().toISOString(), type: "skipped", signal, decision: { pay: false, reason: "Payment failed" } });
           }
         } else {
-          addActivity({
-            id: uid(),
-            timestamp: new Date().toISOString(),
-            type: "skipped",
-            signal,
-            decision,
-          });
+          addActivity({ id: uid(), timestamp: new Date().toISOString(), type: "skipped", signal, decision });
         }
 
-        // Small delay to avoid rate limiting the LLM
         await new Promise((r) => setTimeout(r, 800));
       }
     } catch (err) {
@@ -188,17 +124,10 @@ export function useCopyAgent() {
   const stop = () => {
     runningRef.current = false;
     setState((prev) => ({ ...prev, running: false }));
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
+    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
   };
 
-  useEffect(() => {
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, []);
+  useEffect(() => () => { if (intervalRef.current) clearInterval(intervalRef.current); }, []);
 
   return { state, start, stop };
 }

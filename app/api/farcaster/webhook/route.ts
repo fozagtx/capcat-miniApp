@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
           {
             label: "Open capcat",
             action: "post_redirect",
-            target: `${baseUrl}/mini-app`,
+            target: `${baseUrl}/`,
           },
         ],
         input: {
