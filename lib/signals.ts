@@ -1,105 +1,116 @@
 export interface SignalMeta {
   id: string;
-  endpoint: string; // path relative to BASE_URL
+  endpoint: string;
   trader: string;
   symbol: string;
   side: "LONG" | "SHORT";
-  confidence: number; // 0-1, trader's stated confidence in this specific call
-  priceUsdc: string; // x402 price, e.g. "$0.01"
-  teaser: string; // free public summary shown before payment
-  historicalWinRate: number; // 0-1, trader's advertised track record
-  historicalAvgReturnPct: number; // avg simulated return per copied trade
+  confidence: number;
+  priceUsdc: string;
+  teaser: string;
+  historicalWinRate: number;
+  historicalAvgReturnPct: number;
   entry: number;
   stopLoss: number;
   takeProfit: number;
   rationale: string;
 }
 
-const pct = (price: number, delta: number) => Number((price * (1 + delta)).toFixed(4));
-
-export const SIGNALS: SignalMeta[] = [
-  {
-    id: "alpha-momentum",
-    endpoint: "/api/signals/alpha-momentum",
-    trader: "AlphaMomentum",
-    symbol: "SOL/USDC",
-    side: "LONG",
-    confidence: 0.78,
-    priceUsdc: "$0.01",
-    teaser: "Momentum breakout setup on SOL — entry/stop/target behind paywall.",
-    historicalWinRate: 0.64,
-    historicalAvgReturnPct: 1.8,
-    entry: 142.3,
-    stopLoss: pct(142.3, -0.03),
-    takeProfit: pct(142.3, 0.06),
-    rationale: "Breakout above the 4h consolidation range with rising volume.",
-  },
-  {
-    id: "nova-scalper",
-    endpoint: "/api/signals/nova-scalper",
-    trader: "NovaScalper",
-    symbol: "ETH/USDC",
-    side: "SHORT",
-    confidence: 0.55,
-    priceUsdc: "$0.004",
-    teaser: "Quick scalp on ETH resistance rejection.",
-    historicalWinRate: 0.41,
-    historicalAvgReturnPct: 0.4,
-    entry: 3180.5,
-    stopLoss: pct(3180.5, 0.015),
-    takeProfit: pct(3180.5, -0.025),
-    rationale: "Rejection wick off the daily resistance trendline.",
-  },
-  {
-    id: "vertex-swing",
-    endpoint: "/api/signals/vertex-swing",
-    trader: "VertexSwing",
-    symbol: "BTC/USDC",
-    side: "LONG",
-    confidence: 0.82,
-    priceUsdc: "$0.02",
-    teaser: "Multi-day swing setup on BTC accumulation zone.",
-    historicalWinRate: 0.71,
-    historicalAvgReturnPct: 2.6,
-    entry: 68450,
-    stopLoss: pct(68450, -0.04),
-    takeProfit: pct(68450, 0.09),
-    rationale: "Accumulation range with declining exchange reserves.",
-  },
-  {
-    id: "echo-arb",
-    endpoint: "/api/signals/echo-arb",
-    trader: "EchoArb",
-    symbol: "ARB/USDC",
-    side: "LONG",
-    confidence: 0.6,
-    priceUsdc: "$0.001",
-    teaser: "Cross-venue funding-rate arb window on ARB.",
-    historicalWinRate: 0.52,
-    historicalAvgReturnPct: 0.6,
-    entry: 0.82,
-    stopLoss: pct(0.82, -0.02),
-    takeProfit: pct(0.82, 0.03),
-    rationale: "Funding rate divergence between two venues, mean-reversion play.",
-  },
-  {
-    id: "atlas-macro",
-    endpoint: "/api/signals/atlas-macro",
-    trader: "AtlasMacro",
-    symbol: "SUI/USDC",
-    side: "SHORT",
-    confidence: 0.38,
-    priceUsdc: "$0.008",
-    teaser: "Macro-driven short thesis on SUI ahead of unlock event.",
-    historicalWinRate: 0.33,
-    historicalAvgReturnPct: -0.3,
-    entry: 3.41,
-    stopLoss: pct(3.41, 0.03),
-    takeProfit: pct(3.41, -0.05),
-    rationale: "Token unlock event increases sell pressure; thesis has missed 2 of last 3 calls.",
-  },
+const TRADERS = [
+  { name: "AlphaMomentum", winRate: 0.64, avgReturn: 1.8, style: "momentum" },
+  { name: "NovaScalper", winRate: 0.41, avgReturn: 0.4, style: "scalp" },
+  { name: "VertexSwing", winRate: 0.71, avgReturn: 2.6, style: "swing" },
+  { name: "EchoArb", winRate: 0.52, avgReturn: 0.6, style: "arbitrage" },
+  { name: "AtlasMacro", winRate: 0.33, avgReturn: -0.3, style: "macro" },
+  { name: "ZenFlow", winRate: 0.58, avgReturn: 1.2, style: "trend" },
+  { name: "QuantumPulse", winRate: 0.45, avgReturn: 0.8, style: "mean-reversion" },
 ];
 
-export function getSignalById(id: string): SignalMeta | undefined {
-  return SIGNALS.find((s) => s.id === id);
+const TOKENS = ["bitcoin", "ethereum", "solana", "sui", "arbitrum", "dogecoin", "chainlink", "avalanche-2"] as const;
+
+function id(name: string) { return name.toLowerCase().replace(/\s+/g, "-"); }
+
+async function fetchPrices(): Promise<Record<string, number>> {
+  const ids = TOKENS.join(",");
+  const res = await fetch(
+    `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`,
+    { next: { revalidate: 60 } }
+  );
+  const data = await res.json();
+  const prices: Record<string, number> = {};
+  for (const token of TOKENS) {
+    prices[token] = data[token]?.usd ?? 0;
+  }
+  return prices;
+}
+
+function seedRandom(seed: number) {
+  let s = seed;
+  return () => {
+    s = (s * 1664525 + 1013904223) & 0xffffffff;
+    return (s >>> 0) / 0xffffffff;
+  };
+}
+
+export async function getSignals(): Promise<SignalMeta[]> {
+  const prices = await fetchPrices();
+  const signals: SignalMeta[] = [];
+  const now = new Date();
+  const hourSeed = now.getUTCHours() + now.getUTCDate() * 24 + now.getUTCMonth() * 31 * 24;
+  const rng = seedRandom(hourSeed);
+
+  const traded: { symbol: string; price: number; trader: typeof TRADERS[0]; side: "LONG" | "SHORT" }[] = [];
+
+  for (const trader of TRADERS) {
+    const candidates = TOKENS.filter(t => !traded.some(x => x.trader.name === trader.name && x.symbol === t));
+    if (candidates.length === 0) continue;
+    const token = candidates[Math.floor(rng() * candidates.length)];
+    const price = prices[token];
+    if (!price || price <= 0) continue;
+
+    const side = rng() > 0.45 ? "LONG" : "SHORT";
+    const conf = 0.3 + rng() * 0.5;
+    const signalPrice = conf > 0.7 ? "$0.02" : conf > 0.5 ? "$0.01" : "$0.005";
+    const slPct = 0.02 + rng() * 0.04;
+    const tpPct = 0.03 + rng() * 0.07;
+
+    const teasers: Record<string, string[]> = {
+      momentum: ["Momentum breakout on %s at $%.2f", "%s showing strong RSI divergence", "Volume surge on %s — entry setup active"],
+      scalp: ["Quick scalp on %s at $%.2f", "%s rejecting key resistance level", "Short-term reversal setup on %s"],
+      swing: ["Swing trade on %s near support at $%.2f", "%s in accumulation range", "Multi-day setup on %s"],
+      arbitrage: ["Cross-venue arb on %s at $%.2f", "%s funding rate divergence detected", "Spread opportunity on %s between venues"],
+      macro: ["Macro play on %s at $%.2f", "%s ahead of catalyst event", "Fundamental shift on %s"],
+      trend: ["Trend continuation on %s at $%.2f", "%s riding the daily trend", "%s setup with confluence"],
+      "mean-reversion": ["Mean reversion on %s at $%.2f", "%s oversold bounce setup", "%s diverging from moving average"],
+    };
+
+    const styleTeasers = teasers[trader.style] || teasers.momentum;
+    const teaser = styleTeasers[Math.floor(rng() * styleTeasers.length)].replace("%s", token.toUpperCase()).replace("%.2f", price.toFixed(2));
+
+    const sId = id(`${trader.name}-${token}-${now.toISOString().slice(0, 10)}`);
+
+    signals.push({
+      id: sId,
+      endpoint: `/api/signals/${sId}`,
+      trader: trader.name,
+      symbol: `${token.toUpperCase()}/USDC`,
+      side,
+      confidence: Math.round(conf * 100) / 100,
+      priceUsdc: signalPrice,
+      teaser,
+      historicalWinRate: trader.winRate,
+      historicalAvgReturnPct: trader.avgReturn,
+      entry: price,
+      stopLoss: side === "LONG" ? Number((price * (1 - slPct)).toFixed(2)) : Number((price * (1 + slPct)).toFixed(2)),
+      takeProfit: side === "LONG" ? Number((price * (1 + tpPct)).toFixed(2)) : Number((price * (1 - tpPct)).toFixed(2)),
+      rationale: teaser,
+    });
+
+    traded.push({ symbol: token, price, trader, side });
+  }
+
+  return signals;
+}
+
+export function getSignalById(signals: SignalMeta[], id: string): SignalMeta | undefined {
+  return signals.find((s) => s.id === id);
 }
