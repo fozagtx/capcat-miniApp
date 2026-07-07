@@ -69,13 +69,18 @@ export async function payAndFetch<T = unknown>(url: string): Promise<T> {
   return r.data as T;
 }
 
-export async function checkBalance(): Promise<{ gateway: string; wallet: string }> {
+export async function checkBalance(): Promise<{ gateway: string; wallet: string; address: string }> {
   const gw = getDemoClient();
-  const b = await gw.getBalances();
-  return {
-    gateway: b.gateway.formattedAvailable ?? "0",
-    wallet: b.wallet.formatted ?? "0",
-  };
+  try {
+    const b = await gw.getBalances();
+    return {
+      gateway: b.gateway.formattedAvailable ?? "0",
+      wallet: b.wallet.formatted ?? "0",
+      address: gw.address,
+    };
+  } catch {
+    return { gateway: "0", wallet: "0", address: DEMO_ADDRESS };
+  }
 }
 
 export async function depositToGateway(amount: string): Promise<void> {
