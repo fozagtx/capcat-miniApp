@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Zap, TrendingUp, Shield, ArrowRight, CheckCircle, XCircle, Bot, Play, Square, Activity, Brain, Wallet } from "lucide-react";
-import { payAndFetch, checkBalance, depositToGateway, getAddress } from "@/lib/x402-client";
+import { payAndFetch, checkBalance, depositToGateway, connectWallet, getAddress } from "@/lib/x402-client";
 import { useCopyAgent } from "@/hooks/use-copy-agent";
 
 interface Signal {
@@ -24,6 +24,8 @@ export default function MiniApp() {
   const [gatewayBalance, setGatewayBalance] = useState("0");
   const [walletBalance, setWalletBalance] = useState("0");
   const [depositing, setDepositing] = useState(false);
+  const [walletAddress, setWalletAddress] = useState("");
+  const [walletConnected, setWalletConnected] = useState(false);
 
   const { state: agent, start: startAgent, stop: stopAgent } = useCopyAgent();
 
@@ -118,6 +120,16 @@ export default function MiniApp() {
               <button onClick={stopAgent} className="px-3 py-1.5 rounded-full bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 flex items-center gap-1.5 text-xs text-red-400 transition-colors">
                 <Square className="w-3 h-3" /> Stop Agent
               </button>
+            )}
+            {!walletConnected ? (
+              <button onClick={async () => {
+                const r = await connectWallet();
+                if (r.connected) { setWalletAddress(r.address); setWalletConnected(true); }
+              }} className="px-3 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/20 hover:bg-cyan-500/20 flex items-center gap-1.5 text-xs text-cyan-400 transition-colors">
+                <Wallet className="w-3 h-3" /> Connect Wallet
+              </button>
+            ) : (
+              <span className="text-xs text-zinc-500 font-mono truncate max-w-[100px]">{walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}</span>
             )}
             <div className={`px-3 py-1 rounded-full ${agent.running ? 'bg-green-500/10 border border-green-500/20' : 'bg-zinc-800 border border-zinc-700'}`}>
               <div className="flex items-center gap-1.5">
