@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSignals } from "@/lib/signals";
 
-export const dynamic = "force-dynamic";
-
 export async function GET() {
   const signals = await getSignals();
   const feed = signals.map((s) => ({
