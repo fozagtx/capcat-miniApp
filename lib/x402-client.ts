@@ -42,7 +42,7 @@ export async function connectWallet(): Promise<{ address: string; connected: boo
   };
 
   const scheme = new BatchEvmScheme(signer);
-  x402 = new x402Client({ schemes: [{ network: "eip155:5042002", client: scheme }] });
+  x402 = x402Client.fromConfig({ schemes: [{ network: "eip155:5042002", client: scheme }] });
   return { address, connected: true };
 }
 
