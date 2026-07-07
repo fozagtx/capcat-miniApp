@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Zap, TrendingUp, Shield, ArrowRight, CheckCircle, XCircle, Bot, Play, Square, Activity, Brain } from "lucide-react";
-import { payAndFetch } from "@/lib/x402-client";
+import { Zap, TrendingUp, Shield, ArrowRight, CheckCircle, XCircle, Bot, Play, Square, Activity, Brain, Wallet } from "lucide-react";
+import { payAndFetch, checkBalance, depositToGateway, getAddress } from "@/lib/x402-client";
 import { useCopyAgent } from "@/hooks/use-copy-agent";
 
 interface Signal {
@@ -21,8 +21,10 @@ export default function MiniApp() {
   const [paymentStatus, setPaymentStatus] = useState<"idle" | "required" | "processing" | "success" | "failed">("idle");
   const [unlockedData, setUnlockedData] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<"signals" | "agent">("signals");
+  const [gatewayBalance, setGatewayBalance] = useState("0");
+  const [walletBalance, setWalletBalance] = useState("0");
+  const [depositing, setDepositing] = useState(false);
 
-  // AI Copy Agent
   const { state: agent, start: startAgent, stop: stopAgent } = useCopyAgent();
 
   useEffect(() => {
@@ -38,7 +40,23 @@ export default function MiniApp() {
       .then(r => r.json())
       .then(data => { setSignals(data.signals || []); setLoading(false); })
       .catch(() => setLoading(false));
+
+    checkBalance()
+      .then(b => { setGatewayBalance(b.gateway); setWalletBalance(b.wallet); })
+      .catch(() => {});
   }, []);
+
+  const handleDeposit = async () => {
+    setDepositing(true);
+    try {
+      await depositToGateway("1");
+      const b = await checkBalance();
+      setGatewayBalance(b.gateway);
+      setWalletBalance(b.wallet);
+    } finally {
+      setDepositing(false);
+    }
+  };
 
   const handleUnlockSignal = (signal: Signal) => {
     setSelectedSignal(signal);
@@ -112,6 +130,25 @@ export default function MiniApp() {
           </div>
         </div>
       </header>
+
+      {/* Balance Bar */}
+      <div className="bg-zinc-900/30 border-b border-zinc-800/50 px-4 py-2">
+        <div className="flex items-center justify-end gap-4 max-w-2xl mx-auto text-xs">
+          <span className="text-zinc-500">
+            Gateway: <span className="text-white font-mono">{Number(gatewayBalance).toFixed(4)}</span> USDC
+          </span>
+          <span className="text-zinc-500">
+            Wallet: <span className="text-white font-mono">{Number(walletBalance).toFixed(4)}</span> USDC
+          </span>
+          <button
+            onClick={handleDeposit}
+            disabled={depositing || Number(walletBalance) < 0.5}
+            className="px-2 py-1 rounded bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            {depositing ? "..." : "Deposit 1 USDC"}
+          </button>
+        </div>
+      </div>
 
       <main className="px-4 py-6 max-w-2xl mx-auto">
         {/* Agent Stats Bar */}

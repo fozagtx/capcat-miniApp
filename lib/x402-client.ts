@@ -23,14 +23,20 @@ export function getAddress(): string {
 
 export async function payAndFetch<T = unknown>(url: string): Promise<T> {
   const gw = getPaymentClient();
-  try {
-    const b = await gw.getBalances();
-    if (Number(b.gateway.formattedAvailable ?? "0") < 0.1) {
-      await gw.deposit("1");
-    }
-  } catch {
-    // pay() will surface the real error
-  }
   const r = await gw.pay(url);
   return r.data as T;
+}
+
+export async function checkBalance(): Promise<{ gateway: string; wallet: string }> {
+  const gw = getPaymentClient();
+  const b = await gw.getBalances();
+  return {
+    gateway: b.gateway.formattedAvailable ?? "0",
+    wallet: b.wallet.formatted ?? "0",
+  };
+}
+
+export async function depositToGateway(amount: string): Promise<void> {
+  const gw = getPaymentClient();
+  await gw.deposit(amount);
 }
