@@ -1,22 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withGatewayDynamic } from "@/lib/x402";
-import { getSignalById, getSignals } from "@/lib/signals";
+import { getSignalById, getSignals, type SignalMeta } from "@/lib/signals";
 
-let cached: Awaited<ReturnType<typeof getSignals>> | null = null;
-let cachedAt = 0;
+let signalsCache: SignalMeta[] = [];
 
-async function getSignalsCached() {
-  if (!cached || Date.now() - cachedAt > 60_000) {
-    cached = await getSignals();
-    cachedAt = Date.now();
-  }
-  return cached;
+async function refreshCache() {
+  signalsCache = await getSignals();
 }
+
+refreshCache();
+setInterval(refreshCache, 60_000);
 
 async function routeHandler(req: NextRequest) {
   const id = req.nextUrl.pathname.split("/").pop()!;
-  const signals = await getSignalsCached();
-  const signal = getSignalById(signals, id);
+  const signal = getSignalById(signalsCache, id);
   if (!signal) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
@@ -37,10 +34,9 @@ async function routeHandler(req: NextRequest) {
   });
 }
 
-export const GET = withGatewayDynamic(routeHandler, async (req) => {
+export const GET = withGatewayDynamic(routeHandler, (req) => {
   const id = req.nextUrl.pathname.split("/").pop()!;
-  const signals = await getSignalsCached();
-  const signal = getSignalById(signals, id);
+  const signal = getSignalById(signalsCache, id);
   if (!signal) return null;
   return { price: signal.priceUsdc, endpoint: signal.endpoint };
 });
