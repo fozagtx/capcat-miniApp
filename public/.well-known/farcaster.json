@@ -1,0 +1,20 @@
+{
+  "frame": {
+    "version": "next",
+    "name": "capcat",
+    "homeUrl": "http://localhost:3000",
+    "iconUrl": "http://localhost:3000/favicon.ico",
+    "imageUrl": "http://localhost:3000/og.png",
+    "buttonTitle": "Trade on Arc",
+    "splashImageUrl": "http://localhost:3000/og.png",
+    "splashBackgroundColor": "#0a0a0a",
+    "webhookUrl": "http://localhost:3000/api/farcaster/webhook"
+  },
+  "triggers": [
+    {
+      "type": "cast",
+      "id": "signal-feed",
+      "url": "http://localhost:3000"
+    }
+  ]
+}
